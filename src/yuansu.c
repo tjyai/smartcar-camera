@@ -2,30 +2,30 @@
 #include <intrins.h>
 #include <string.h>
 #include "yuansu.h"
-#define RING_SCAN_START  (SEARCH_IMAGE_H * 2 / 3)   // 鐜�宀涙壂鎻忓紑濮嬭�岋紝鍥惧儚涓嬫柟2/3澶�
+#define RING_SCAN_START  (SEARCH_IMAGE_H * 2 / 3)   // 环岛扫描开始行，图像下方2/3处
   #define RING_SCAN_END     10    
 // ============================================================
- // 璋冭瘯鍙橀噺锛圵atch绐楀彛鐢�锛屾垨IPS200鏄剧ず鐢�锛�
-  int debug_arc_fail = 0;           // 鍦嗗姬妫�娴嬪け璐ュ師鍥�
+ // 调试变量（Watch窗口用，或IPS200显示用）
+  int debug_arc_fail = 0;           // 圆弧检测失败原因
 
-  // 杈圭晫璋冭瘯
-  int debug_r_bot_lost = 0;         // 鍙宠竟鐣屽簳閮ㄨ繛缁�涓㈠け琛屾暟
-  int debug_r_left     = 0;         // 鍙宠竟鐣屽��<94鐨勪釜鏁�
+  // 边界调试
+  int debug_r_bot_lost = 0;         // 右边界底部连续丢失行数
+  int debug_r_left     = 0;         // 右边界值<94的个数
 
-  // 鍑哄彛璋冭瘯
-  int debug_valley_ok   = 0;        // 鍑哄彛妫�娴�: 0=鏈�妫�娴�, 1=妫�娴婣(鍗曚晶),
- // 2=妫�娴婤(瀹屽叏涓㈠け)
-  int debug_valley_dec  = 0;        // 涓嬮檷杈瑰舰鎴愯�℃暟
-  int debug_valley_inc  = 0;        // 涓婂崌杈瑰舰鎴愯�℃暟
-  int debug_valley_lost = 0;        // 鏀跺彛涓婃柟杩炵画涓㈠け琛屾暟
+  // 出口调试
+  int debug_valley_ok   = 0;        // 出口检测: 0=未检测, 1=检测A(单侧),
+ // 2=检测B(完全丢失)
+  int debug_valley_dec  = 0;        // 下降边形成计数
+  int debug_valley_inc  = 0;        // 上升边形成计数
+  int debug_valley_lost = 0;        // 收口上方连续丢失行数
 
-  // 鍙宠竟鐣屾寚鏍�
-  int debug_steady_ok    = 0;       // 鍙宠竟鐣岀ǔ瀹氭��娴�: 1=閫氳繃, 0=鏈�閫氳繃
-  int debug_steady_total = 0;       // 鍙宠竟鐣屾湁鏁堣�屾暟
-  int debug_steady_jump  = 0;       // 鍙宠竟鐣岃烦鍙樻�℃暟
-  int debug_exit_phase   = 0;       // 褰撳墠鍑哄彛闃舵��(0/1)
-  int debug_l_bot        = 0;       // 宸﹁竟鐣屽簳閮ㄨ繛缁�涓㈠け琛屾暟
-  int debug_r_bot        = 0;       // 鍙宠竟鐣屽簳閮ㄨ繛缁�涓㈠け琛屾暟
+  // 右边界指标
+  int debug_steady_ok    = 0;       // 右边界稳定检测: 1=通过, 0=未通过
+  int debug_steady_total = 0;       // 右边界有效行数
+  int debug_steady_jump  = 0;       // 右边界跳变次数
+  int debug_exit_phase   = 0;       // 当前出口阶段(0/1)
+  int debug_l_bot        = 0;       // 左边界底部连续丢失行数
+  int debug_r_bot        = 0;       // 右边界底部连续丢失行数
 	int debug_best_len = 0;
   int debug_max_val  = 0;
   int debug_inc_cnt  = 0;
@@ -33,9 +33,9 @@
 	
 	int exit_confirm_cnt = 0;
 	
-	int debug_r_lost_cnt = 0;   // 鎵�鎻忎腑鍙宠竟鐣屼涪澶辫�屾暟
-  int debug_r_range    = 0;   // 鍙宠竟鐣屽熬閮ㄦ尝鍔ㄨ寖鍥�
-  int debug_r_has_94   = 0;   // 鏄�鍚﹀瓨鍦�<94: 0=鏃�, 1=鏈�
+	int debug_r_lost_cnt = 0;   // 扫描中右边界丢失行数
+  int debug_r_range    = 0;   // 右边界尾部波动范围
+  int debug_r_has_94   = 0;   // 是否存在<94: 0=无, 1=有
 	
 	
 	int debug_valid_cnt = 0;
@@ -45,7 +45,7 @@
   int debug_r_jump     = 0;
   int debug_r_has94_ex = 0;
 // ============================================================
-// 鏍囧噯璧涢亾瀹藉害
+// 标准赛道宽度
 // ============================================================
 const int STANDARD_HALF_WIDTH[120] = {
     15, 15, 15, 16, 16, 16, 17, 17, 18, 18,
@@ -63,7 +63,7 @@ const int STANDARD_HALF_WIDTH[120] = {
 };
 
 // ============================================================
-// 鍏ㄥ眬鐘舵�佸彉閲�
+// 全局状态变量
 // ============================================================
 
 int         corner_row            = -1;
@@ -72,20 +72,20 @@ int         ring_arc_found        = 0;
 int         ring_fix_below_enable = 0;
 int         ring_fix_above_enable = 0;
 int         ring_arc_row          = -1;
- static int dynamic_hw = 65;   // 宸﹁竟鐣屼涪澶辨椂鐨勫姩鎬佸�藉害
+ static int dynamic_hw = 65;   // 左边界丢失时的动态宽度
 ring_step_t ring_step             = RING_NONE;
 int  confirm_cnt    = 0;
 static int  ring_fill_dist = 0;
 int  ring_arc_max   = 0;
 static int  last_arc_val   = 0;
 static int  out_cool_cnt   = 0;
-static int arc_lost_cnt = 0;   // 鍦嗗姬杩炵画涓㈠け甯ф暟
+static int arc_lost_cnt = 0;   // 圆弧连续丢失帧数
 static int arc_alive_cnt = 0; 
 static int exit_phase    = 0;   
- int find_arc_ok   = 0;   // 褰撳墠甯ф槸鍚︽壘鍒板渾寮�
+ int find_arc_ok   = 0;   // 当前帧是否找到圆弧
  static int phase0_cnt = 0;
   // ============================================================
-  // 杈圭晫杈呭姪鍑芥暟
+  // 边界辅助函数
   // ============================================================
   uint8 left_lost(int row)
   {
@@ -120,8 +120,8 @@ static int exit_phase    = 0;
       return cnt;
   }
 
-// 妫�娴嬪彸杈圭晫鏄�鍚︽槸涓�鏉″�炬枩鐩寸嚎锛堟暣鏁拌繍绠楃増鏈�锛�
-// 杩斿洖1锛氭槸鐩寸嚎锛岃繑鍥�0锛氫笉鏄�鐩寸嚎
+// 检测右边界是否是一条倾斜直线（整数运算版本）
+// 返回1：是直线，返回0：不是直线
 int right_boundary_is_line(int scan_start, int scan_end)
 {
     int row, cnt = 0;
@@ -186,14 +186,14 @@ uint8 detect_ring(const uint8 *image, uint8 *ring_center_col, uint8 *ring_center
     int ring_width;
     int center_col;
     int top_row = -1, bottom_row = -1;
-    // 绗�涓�姝ワ細鎵�鎻忓乏鍙宠竟鐣岋紝浠庝笅寰�涓婃壂鎻忥紝鎵鹃粦鑹插尯鍩熺殑宸﹀彸杈圭晫
+    // 第一步：扫描左右边界，从下往上扫描，找黑色区域的左右边界
     for (row = row_max; row >= row_min; row -= ROW_STEP)
     {
         const uint8 *p_row = &image[row * SEARCH_IMAGE_W];
         int lane_left  = left_edge_line[row];
         int lane_right = right_edge_line[row];
         int16 temp_left = -1, temp_right = -1;
-        // 浠庡乏杈瑰紑濮嬫壘杩炵画 BLACK_NEED 涓�榛戠偣 鈫� 榛戣壊鍖哄煙宸﹁竟鐣�
+        // 从左边开始找连续 BLACK_NEED 个黑点 → 黑色区域左边界
         for (col = lane_left; col <= lane_right - BLACK_NEED; col += COL_STEP)
         {
             black_cnt = 0;
@@ -205,7 +205,7 @@ uint8 detect_ring(const uint8 *image, uint8 *ring_center_col, uint8 *ring_center
             if (black_cnt >= BLACK_NEED) { temp_left = col; break; }
         }
         if (temp_left == -1) continue;
-        // 浠庡彸杈瑰紑濮嬫壘杩炵画 BLACK_NEED 涓�榛戠偣 鈫� 榛戣壊鍖哄煙鍙宠竟鐣�
+        // 从右边开始找连续 BLACK_NEED 个黑点 → 黑色区域右边界
         for (col = lane_right; col >= lane_left + BLACK_NEED; col -= COL_STEP)
         {
             black_cnt = 0;
@@ -216,7 +216,7 @@ uint8 detect_ring(const uint8 *image, uint8 *ring_center_col, uint8 *ring_center
             }
             if (black_cnt >= BLACK_NEED) { temp_right = col; break; }
         }
-        // 宸﹀彸閮芥壘鍒颁簡锛岃�存槑杩欒�屾湁榛戣壊鍖哄煙
+        // 左右都找到了，说明这行有黑色区域
         if (temp_left != -1 && temp_right != -1 && temp_right > temp_left)
         {
             ring_left = temp_left;
@@ -226,18 +226,18 @@ uint8 detect_ring(const uint8 *image, uint8 *ring_center_col, uint8 *ring_center
         }
     }
     if (found_row == -1 || ring_left < 0) return 0;
-    // 灏哄�告牎楠岋細鍦嗙幆鐩村緞搴斿湪 8~60 涔嬮棿
+    // 尺寸校验：圆环直径应在 8~60 之间
     ring_width = ring_right - ring_left;
     if (ring_width < 8 || ring_width > 60) return 0;
-    // 杈圭晫鐧界偣鏍￠獙锛氶粦鑹插尯鍩熺殑宸﹁竟鍜屽彸杈瑰簲璇ユ槸鐧借壊璧涢亾
+    // 边界白点校验：黑色区域的左边和右边应该是白色赛道
     if (ring_left - 1 < 0) return 0;
     if (*(image + found_row * SEARCH_IMAGE_W + ring_left - 1) < white_min_point) return 0;
     if (ring_right + 1 >= SEARCH_IMAGE_W) return 0;
     if (*(image + found_row * SEARCH_IMAGE_W + ring_right + 1) < white_min_point) return 0;
-    // 绗�浜屾�ワ細娌夸腑绾挎壂鎻忥紝鎵句腑蹇冪偣锛堝渾鐜�鐨勪笂涓嬭竟缂橈級
-    // 鍦嗙幆鎴�闈�锛氶粦鐧介粦鐨勫垎甯冿紝浠庝笅寰�涓婃槸 榛�(涓嬭竟缂�) 鐧�(涓�闂�) 榛�(涓婅竟缂�) 鐧�
+    // 第二步：沿中线扫描，找中心点（圆环的上下边缘）
+    // 圆环截面：黑白黑的分布，从下往上是 黑(下边缘) 白(中间) 黑(上边缘) 白
     center_col = (ring_left + ring_right) / 2;
-    // 鎵句笅杈圭紭锛氫粠涓嬪線涓婏紝鎵鹃粦鈫掔櫧璺冲彉锛堝綋鍓嶈�岄粦锛屼笅涓�琛岀櫧锛�
+    // 找下边缘：从下往上，找黑→白跳变（当前行黑，下一行白）
     for (row = row_max - 1; row >= row_min + 1; row--)
     {
         if (image[row * SEARCH_IMAGE_W + center_col] < white_min_point &&
@@ -248,7 +248,7 @@ uint8 detect_ring(const uint8 *image, uint8 *ring_center_col, uint8 *ring_center
         }
     }
     if (bottom_row == -1) return 0;
-    // 鎵句笂杈圭紭锛氫粠涓嬭竟缂樺線涓婏紝鎵剧櫧鈫掗粦璺冲彉
+    // 找上边缘：从下边缘往上，找白→黑跳变
     for (row = bottom_row - 1; row >= row_min + 1; row--)
     {
         if (image[row * SEARCH_IMAGE_W + center_col] < white_min_point &&
@@ -259,7 +259,7 @@ uint8 detect_ring(const uint8 *image, uint8 *ring_center_col, uint8 *ring_center
         }
     }
     if (top_row == -1) return 0;
-    // 涓婁笅杈圭紭璺濈�绘牎楠岋紙鍦嗙幆鐩村緞涓嶈兘澶�灏忥級
+    // 上下边缘距离校验（圆环直径不能太小）
     if (bottom_row - top_row < 4) return 0;
     *ring_center_col = (uint8)center_col;
     *ring_center_row = (uint8)((top_row + bottom_row) / 2);
@@ -299,7 +299,7 @@ static int find_arc_top(int scan_start, int scan_end,
       if (scan_end  >= scan_start)      scan_end   = scan_start - 1;
 
       // ============================================================
-      // 闃舵��1锛氬乏杈圭晫杩炵画涓㈠け >= 8 琛�
+      // 阶段1：左边界连续丢失 >= 8 行
       // ============================================================
     best_len   = 0;
       best_start = -1;
@@ -341,7 +341,7 @@ static int find_arc_top(int scan_start, int scan_end,
       if (best_len < 20) { debug_arc_fail = 1; return 0; }
 
       // ============================================================
-      // 闃舵��2锛氭壘涓㈠け鍖轰笂鏂圭殑宸﹁竟鐣屽�� >= 15锛屾湁鏁堣�� >= 5
+      // 阶段2：找丢失区上方的左边界值 >= 15，有效行 >= 5
       // ============================================================
       max_val   = 0;
       max_row   = -1;
@@ -362,7 +362,7 @@ static int find_arc_top(int scan_start, int scan_end,
       if (valid_cnt < 5) { debug_arc_fail = 4; return 0; }
 
       // ============================================================
-      // 闃舵��3锛氫笂鍗囧垽鏂� - 浠庝涪澶卞尯鍒版渶澶у�间箣闂寸殑鏈�闀胯繛缁�涓婂崌 >= 5
+      // 阶段3：上升判断 - 从丢失区到最大值之间的最长连续上升 >= 5
       // ============================================================
       {
           int cur_streak = 0, max_streak = 0;
@@ -386,7 +386,7 @@ static int find_arc_top(int scan_start, int scan_end,
       if (inc_cnt < 2) { debug_arc_fail = 5; return 0; }
 
       // ============================================================
-      // 闃舵��4锛氫笅闄嶅垽鏂� - 浠庢渶澶у�煎線涓婏紝鏈�闀胯繛缁�涓嬮檷 >= 4
+      // 阶段4：下降判断 - 从最大值往上，最长连续下降 >= 4
       // ============================================================
       dec_end_row = -1;
       {
@@ -411,7 +411,7 @@ static int find_arc_top(int scan_start, int scan_end,
       if (dec_cnt < 4) { debug_arc_fail = 6; return 0; }
 
       // ============================================================
-      // 闃舵��5锛氭渶澶у�间笂鏂硅繛缁�榛戣�� >= 5 琛�
+      // 阶段5：最大值上方连续黑行 >= 5 行
       // ============================================================
       if (dec_end_row < 0) { debug_arc_fail = 9; return 0; }
       {
@@ -427,12 +427,12 @@ static int find_arc_top(int scan_start, int scan_end,
       }
 
       // ============================================================
-      // 闃舵��6锛氬彸杈圭晫楠岃瘉
-      //   - 鏈�鍊煎�勫彸杈圭晫涓嶈兘涓㈠け
-      //   - 鍙宠竟鐣屾渶鍊� > 宸﹁竟鐣屾渶鍊�
-      //   - 鎵�鎻忚寖鍥村唴鍙宠竟鐣屼涪澶� < 3
-      //   - 鍙宠竟鐣屾渶灏忓�兼湁鏁� > 94
-      //   - 鍙宠竟鐣屽熬閮ㄦ尝鍔� <= 65
+      // 阶段6：右边界验证
+      //   - 最值处右边界不能丢失
+      //   - 右边界最值 > 左边界最值
+      //   - 扫描范围内右边界丢失 < 3
+      //   - 右边界最小值有效 > 94
+      //   - 右边界尾部波动 <= 65
       // ============================================================
       if (right_lost(max_row))                 { debug_arc_fail = 7; return 0;
   }
@@ -466,7 +466,7 @@ static int find_arc_top(int scan_start, int scan_end,
       if (debug_r_range > 65)    { debug_arc_fail = 12; return 0; }
       if (debug_r_lost_cnt >= 3) { debug_arc_fail = 10; return 0; }
 
-      // 鍙宠竟鐣屽繀椤绘槸鍊炬枩鐩寸嚎
+      // 右边界必须是倾斜直线
       if (!right_boundary_is_line(scan_start, scan_end))
       {
           debug_arc_fail = 13;
@@ -479,13 +479,13 @@ static int find_arc_top(int scan_start, int scan_end,
       return 1;
   }
 	//============================================================
-  // 绗�涓�闃舵�碉細鍏ㄥ浘鍙宠竟鐣岃ˉ绾匡紝鍚屾椂璁板綍鍔ㄦ�佸�藉害
+  // 第一阶段：全图右边界补线，同时记录动态宽度
   // ============================================================
   static void ring_fix_below_by_right(void)
   {
       int row;
 
-//      // 锟斤拷录锟斤拷前锟斤拷锟揭边斤拷木锟斤拷锟� / 2 锟斤拷为锟斤拷态锟斤拷锟�
+//      // 以当前右边界与圆弧顶线的距离 / 2 作为动态半宽
 //      dynamic_hw = ((int)right_edge_line[ring_arc_row] - ring_arc_max) / 2;
 //      if (dynamic_hw < 10) dynamic_hw = STANDARD_HALF_WIDTH[ring_arc_row];
 
@@ -499,7 +499,7 @@ static int find_arc_top(int scan_start, int scan_end,
   }
 
   // ============================================================
-  // 宸﹁竟鐣屼涪澶辨椂锛屽乏杈圭晫 + 鍔ㄦ�佸�藉害琛ョ嚎
+  // 左边界丢失时，左边界 + 动态宽度补线
   // ============================================================
     static void ring_fix_by_left(void)
   {
@@ -513,7 +513,7 @@ static int find_arc_top(int scan_start, int scan_end,
           if (!left_lost(row) && left_edge_line[row] > 10)
               mid = (int)left_edge_line[row] + dynamic_hw;
           else
-              mid = last_mid;          // 锟斤拷失时锟斤拷锟斤拷锟斤拷一锟叫碉拷值
+              mid = last_mid;          // 丢失时保持上一行的值
 
           if (mid < 1) mid = 1;
           if (mid > SEARCH_IMAGE_W - 1) mid = SEARCH_IMAGE_W - 1;
@@ -569,7 +569,7 @@ static int find_arc_top(int scan_start, int scan_end,
 	
 	
   // ============================================================
-  // 鍑哄彛闃舵�� phase 0锛氬乏杈圭晫琛ョ嚎锛屽悓鏃跺悜鍙冲亸杩藉彸杈圭晫
+  // 出口阶段 phase 0：左边界补线，同时向右偏追右边界
   // ============================================================
   static void ring_fix_exit_left(void)
   {
@@ -722,12 +722,12 @@ static int find_arc_top(int scan_start, int scan_end,
 
 	
 	 // ============================================================
-  // 鐘舵�佹満
-  //   RING_NONE    鏈� 妫�娴嬪埌鍦嗗姬(5甯х‘璁�) 鈫� RING_IN
-  //   RING_IN      寮� 鍦嗗姬涓㈠け(arc_alive杈�3鎴�10甯�) 鈫� RING_ARC
-  //   RING_ARC     寮� 宸﹁竟鐣岃繘鍏ョ幆宀� 鈫� RING_INSIDE
-  //   RING_INSIDE  寮� 妫�娴嬪埌鍑哄彛 鈫� RING_EXITING
-  //   RING_EXITING 寮� phase0瀹屾垚 / phase1鍙宠竟鐣屾仮澶� 鈫� RING_NONE
+  // 状态机
+  //   RING_NONE    未 检测到圆弧(5帧确认) → RING_IN
+  //   RING_IN      弧 圆弧丢失(arc_alive达3或10帧) → RING_ARC
+  //   RING_ARC     弧 左边界进入环岛 → RING_INSIDE
+  //   RING_INSIDE  弧 检测到出口 → RING_EXITING
+  //   RING_EXITING 弧 phase0完成 / phase1右边界恢复 → RING_NONE
   // ============================================================
  void process_ring(void)
   {
@@ -759,7 +759,7 @@ static int find_arc_top(int scan_start, int scan_end,
               }
               else
               { if (confirm_cnt > 0 && confirm_cnt < 3)
-              ;                    // 偶锟斤拷锟斤拷帧锟斤拷锟街硷拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
+              ;                    // 计数在 0~3 之间时不做处理，等待下一帧确认
           else
                   confirm_cnt   = 0;
                   ring_arc_row  = -1;
@@ -769,7 +769,7 @@ static int find_arc_top(int scan_start, int scan_end,
           }
   case RING_IN:
   {
-      // 每帧刷锟斤拷锟斤拷呓锟阶诧拷锟斤拷失锟斤拷锟斤拷锟斤拷实时锟斤拷示
+      // 每帧刷新左右边界的底部丢失标志，用于实时显示
       {
           int row2, l_bl = 0;
           for (row2 = SEARCH_IMAGE_H - 1; row2 >= 0; row2--)
@@ -822,7 +822,7 @@ static int find_arc_top(int scan_start, int scan_end,
           if (enter_confirm >= 3)
           {
               enter_confirm = 0;
-              ring_step = RING_EXITING;  // 鐩存帴杩涘叆RING_EXITING
+              ring_step = RING_EXITING;  // 直接进入RING_EXITING
               exit_phase = 0;
           }
       }
@@ -865,7 +865,7 @@ static int find_arc_top(int scan_start, int scan_end,
               {
                   phase0_cnt++;
 
-                  // 涓�绾� = 鍙宠竟鐣� + 50
+                  // 中线 = 右边界 + 50
                   for (row = SEARCH_IMAGE_H - 5; row >= 10; row--)
                   {
                       int mid = (int)right_edge_line[row] + 50;
@@ -971,7 +971,7 @@ static int find_arc_top(int scan_start, int scan_end,
       {
           image[ring_arc_row * SEARCH_IMAGE_W + col] = 0x00;
       }
-      // 涓婁笅鍚勫姞涓�琛屽姞绮楁樉绀�
+      // 上下各加一行加粗显示
       if (ring_arc_row > 0)
       {
           for (col = 0; col < SEARCH_IMAGE_W; col++)

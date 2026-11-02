@@ -38,12 +38,12 @@ void laser_pit_handler(void)
     if (laser_timer > 0) {
         laser_timer--;
     } else {
-        // 鍏抽棴鎵�鏈夋縺鍏夊彛
-        gpio_low(IO_P67);  // 涓�闂�
-        gpio_low(IO_P01);  // 宸�1
-        gpio_low(IO_P02);  // 宸�2
-        gpio_low(IO_P03);  // 鍙�2
-        gpio_low(IO_P06);  // 鍙�1
+        // 关闭所有激光口
+        gpio_low(IO_P67);  // 中间
+        gpio_low(IO_P01);  // 左1
+        gpio_low(IO_P02);  // 左2
+        gpio_low(IO_P03);  // 右2
+        gpio_low(IO_P06);  // 右1
     }
 }
 
